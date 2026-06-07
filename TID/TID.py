@@ -75,7 +75,7 @@ REPLY_TIMEOUT = 40
 INSTA_DIR     = Path(cfg.get("download_directory", ""))      
 INSTA_TARGET  = "@instasavegrambot"        
 
-app = Client("Instant", api_id=API_ID, api_hash=API_HASH, proxy=PROXY)
+app = Client("Instant", api_id=API_ID, api_hash=API_HASH, proxy=PROXY, workers=8) # Added workers to increase download speed
 
 # chat_id -> asyncio.Future awaiting that chat's next reply
 _pending = {}
@@ -116,6 +116,7 @@ class Progress:
         self._last   = 0.0
 
     async def __call__(self, cur: int, total: int):
+        print(f"[CB] {cur}/{total}", flush=True)
         now = time.time()
         gap = 0.5 if self.console else 2
         # always let the final 100% frame through
@@ -214,7 +215,7 @@ async def grab_to_disk(client: Client, target: str, line: str):
 
     prog = Progress(client, 0, None, "", fname, console=True)
     try:
-        saved = await client.download_media(reply, file_name=str(dest), progress=prog)
+        saved = await client.download_media(reply, file_name=str(dest), progress=prog.__call__)
         
         # Clean up the bot chat by deleting your request and its video response
         await client.delete_messages(peer_id, [sent_msg.id, reply.id])
@@ -270,7 +271,7 @@ async def main():
         while True:
             try:
                 await download_worker(app)
-                print("✅ Pass done — sleeping 5s\n")
+                print("✅ All links in the *-Insta-post.txt files were downloaded — sleeping 5s\n")
                 await asyncio.sleep(5)
 
             except Exception as e:

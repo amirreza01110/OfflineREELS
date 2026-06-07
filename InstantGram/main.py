@@ -27,7 +27,8 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-this-secret")
 app.config["MAX_CONTENT_LENGTH"] = 55 * 1024 * 1024
 
 BASE_DIR = Path(__file__).resolve().parent
-MEDIA_DIR = BASE_DIR / "media"  
+MEDIA_DIR = BASE_DIR / "media"
+if not os.path.exists(MEDIA_DIR): os.mkdir(MEDIA_DIR)
 USERS_JSON = BASE_DIR / "users.json"
 BOOKMARKS_JSON = BASE_DIR / "bookmarks.json"
 HISTORY_JSON = BASE_DIR / "history.json"
@@ -578,7 +579,7 @@ def scan_media():
     media_list = []
     if not MEDIA_DIR.exists(): MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     
-    # Expecting: MEDIA_DIR/DATE(ex 2026-22-4)/(Videos|Posts)/*********.(mp4|jpg)
+    # Expecting: MEDIA_DIR/DATE(ex 2026-22-4)/(Videos)/*********.(mp4|jpg)
     for file in MEDIA_DIR.rglob("*"):
         if not file.is_file() or file.suffix.lower() not in MEDIA_EXTENSIONS: continue
         file_stat = file.stat()
@@ -879,6 +880,9 @@ stop_event = threading.Event()
 
 def download_handler():
     while not stop_event.is_set():
+        if not os.path.exists(MEDIA_DIR / "Downloaded"):
+          os.mkdir(MEDIA_DIR / "Downloaded")
+          
         files = os.listdir(MEDIA_DIR / "Downloaded")
         if files:
             for file in files:

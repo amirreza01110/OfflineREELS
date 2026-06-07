@@ -1,5 +1,5 @@
 {
-    "api_id": 0,
-    "api_hash": "replace-with-your-telegram-api-hash",
-    "download_directory": "path/to/your/Insta-post-files.txt"
+    "api_id" : "your-telegram-api-hash",
+    "api_hash" :"replace-with-your-telegram-api-hash",
+    "download_directory":"path/to/your/Insta-post-files-directory" 
 }
