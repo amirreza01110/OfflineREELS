@@ -37,6 +37,9 @@ IMAGE_EXTENSIONS = {'.jpg', '.jpeg'}
 VIDEO_EXTENSIONS = {'.mp4'}
 MEDIA_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
 
+EXPLORE_TEMPLATE = "explore.html"
+SAVED_GRID_TEMPLATE = "saved.html"
+
 _MEDIA_CACHE = []
 _MEDIA_CACHE_TIME = 0
 CACHE_TTL_SECONDS = 60 
@@ -52,13 +55,6 @@ def format_number(num):
 
 app.jinja_env.filters['short_num'] = format_number
 
-EXPLORE_
-
-SAVED_GRID_
-
-SETTINGS_
-
-FEED_SHELL_
 
 def _timestamp_from_file(path_obj: Path) -> str:
     stat = path_obj.stat()
@@ -82,7 +78,7 @@ def no_store(response):
     return response
 
 def render_no_store_template(template, **context):
-    return no_store(make_response(render_template_string(template, **context)))
+    return no_store(make_response(render_template(template, **context)))
 
 def resolve_media_path(media_id):
     target = safe_join(str(MEDIA_DIR), media_id)
@@ -479,4 +475,3 @@ def download_handler():
 
 downloadh = threading.Thread(target=download_handler, daemon = True)
 downloadh.start()
-
