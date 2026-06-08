@@ -33,6 +33,7 @@ HISTORY_JSON = BASE_DIR / "history.json"
 SETTINGS_JSON = BASE_DIR / "settings.json"
 MAX_MEDIA_SIZE_BYTES = 50 * 1024 * 1024
 PAGE_SIZE = 7 
+EXPLORE_PAGE_SIZE = 30
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg'}
 VIDEO_EXTENSIONS = {'.mp4'}
 MEDIA_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
@@ -226,6 +227,13 @@ def build_feed_items(offset, limit, bookmarked_ids, media_items, base_url, show_
         rendered.append(render_template("load_more_marker.html", load_more_url=f"{base_url}?offset={offset + limit}&limit={limit}"))
     return "\n".join(rendered)
 
+def build_explore_items(offset, limit, media_items):
+    slice_items = media_items[offset : offset + limit]
+    rendered = [render_template("explore_items_partial.html", items=slice_items)]
+    if offset + limit < len(media_items):
+        rendered.append(render_template("load_more_marker.html", load_more_url=f"/explore/items?offset={offset + limit}&limit={limit}"))
+    return "\n".join(rendered)
+
 def filter_watched(user, media_items):
     settings = _load_json(SETTINGS_JSON, {})
     hide_watched = settings.get(user, {}).get("hide_watched", False)
@@ -278,9 +286,20 @@ def feed_items():
 @app.route("/explore")
 @login_required
 def explore():
+    user = get_current_user()
+    media_items = filter_watched(user, list(get_media_index(force=True)))
+    random.shuffle(media_items)
+    content = build_explore_items(0, EXPLORE_PAGE_SIZE, media_items)
+    return render_no_store_template(EXPLORE_TEMPLATE, items=content)
+
+@app.route("/explore/items")
+@login_required
+def explore_items():
+    offset = int(request.args.get("offset", 0))
+    limit = int(request.args.get("limit", EXPLORE_PAGE_SIZE))
     media_items = filter_watched(get_current_user(), list(get_media_index(force=True)))
     random.shuffle(media_items)
-    return render_no_store_template(EXPLORE_TEMPLATE, items=media_items)
+    return Response(build_explore_items(offset, limit, media_items))
 
 @app.route("/explore_feed/<path:media_id>")
 @login_required

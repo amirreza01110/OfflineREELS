@@ -1,0 +1,5 @@
+{% for media in items %}
+<a href="{{ url_for('explore_feed', media_id=media.id) }}" class="explore-item">
+  <img src="{{ url_for('get_thumbnail', media_id=media.id, v=media.version) }}" loading="lazy" alt="Thumbnail">
+</a>
+{% endfor %}
