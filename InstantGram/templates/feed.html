@@ -1,0 +1,159 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Media Feed</title>
+  <script src="/static/js/htmx.min.js"></script>
+  <style>
+    :root { --text: #f8fafc; --muted: #94a3b8; --accent: #67e8f9; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; height: 100dvh; font-family: "Trebuchet MS", sans-serif; background: linear-gradient(140deg, #020617 0%, #0f172a 35%, #111827 100%); color: var(--text); }
+    body { display: grid; place-items: center; place-content: center; }
+    .topbar { position: sticky; top: 0; z-index: 10; padding: .75rem 1rem; display: flex; flex-direction: column; align-items: center; gap: .25rem; background: linear-gradient(to bottom, rgba(2,6,23,.95), rgba(2,6,23,.65)); border-bottom: 1px solid rgba(148,163,184,.2); }
+    .brand { font-size: 1.05rem; font-weight: 700; width: 100%; display: flex; justify-content: space-between;}
+    .viewport-shell { width: min(100vw, calc(100dvh * 9 / 16)); height: min(100dvh, calc(100vw * 16 / 9)); margin: 0 auto; border-radius: 20px; overflow: hidden; border: 1px solid rgba(148, 163, 184, .25); background: rgba(15, 23, 42, .8); display: grid; grid-template-rows: auto 1fr auto; }
+    .feed { overflow-y: auto; min-height: 0; scroll-snap-type: y mandatory; scroll-behavior: smooth; overscroll-behavior-y: contain; background: linear-gradient(to top, rgba(15,23,42,.9), rgba(8,14,22,.6)); display: flex; flex-direction: column; }
+    #feed-items { display: contents; }
+    .video-card { position: relative; flex: 0 0 100%; height: 100%; max-height: 100%; min-height: 0; scroll-snap-align: start; scroll-snap-stop: always; display: flex; align-items: stretch; padding: .85rem; }
+    .player { position: relative; width: 100%; height: 100%; flex: 1; min-height: 0; border-radius: 22px; overflow: hidden; background: #000; }
+    video, img.reel-image { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+    .overlay { position: absolute; inset: auto .75rem .75rem .75rem; z-index: 3; background: linear-gradient(to top, rgba(2,6,23,.78), rgba(2,6,23,0)); border-radius: 14px; padding: .8rem; pointer-events: none; }
+    .overlay * { pointer-events: auto; }
+    h2 { margin: 0; font-size: 1.08rem; }
+    .meta { color: var(--muted); font-size: .9rem; }
+    .audio-toggle { position: absolute; left: 12px; top: 12px; z-index: 5; border: 0; border-radius: 999px; width: 2.3rem; height: 2.3rem; font-size: 1rem; color: #fff; background: rgba(2, 6, 23, .58); border: 1px solid rgba(148, 163, 184, .35); cursor: pointer; }
+    .bookmark { position: absolute; right: 12px; top: 12px; z-index: 4; border: 0; border-radius: 999px; width: 2.65rem; height: 2.65rem; font-size: 1.25rem; color: #fff; background: rgba(2, 6, 23, .58); border: 1px solid rgba(148, 163, 184, .35); cursor: pointer; }
+    .dl-btn { position: absolute; right: 65px; top: 12px; z-index: 4; border: 0; border-radius: 999px; width: 2.65rem; height: 2.65rem; font-size: 1.1rem; color: #fff; background: rgba(2, 6, 23, .58); border: 1px solid rgba(148, 163, 184, .35); cursor: pointer; display: flex; align-items: center; justify-content: center; text-decoration: none; }
+    .bookmarked { color: #fcd34d; }
+    .side-metrics { position: absolute; right: 12px; bottom: 85px; z-index: 4; display: flex; flex-direction: column; gap: 1rem; align-items: center; pointer-events: none; }
+    .side-metrics .metric { display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
+    .side-metrics .icon { font-size: 1.6rem; margin-bottom: 0.1rem; }
+    .side-metrics .text { color: #fff; font-size: 0.8rem; font-weight: bold; }
+    .feed-empty { flex: 1; display: grid; place-items: center; gap: .5rem; text-align: center; color: var(--muted); }
+    .load-more-sentinel { text-align: center; padding: 1rem; color: var(--muted); font-size: .9rem; flex: 0 0 auto;}
+    .bottom-nav { height: calc(56px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid rgba(148, 163, 184, .25); display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(2, 6, 23, .9); position: sticky; bottom: 0; }
+    .bottom-nav a { display: grid; place-items: center; text-decoration: none; color: #94a3b8; font-size: .72rem; gap: .12rem; padding: .25rem 0; }
+    .bottom-nav a.active { color: #67e8f9; }
+    .loader { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(148,163,184,.3); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 640px) { .topbar { padding: .65rem .6rem; } .video-card { padding: 0; } .player { border-radius: 0; border: none; } .viewport-shell { border-radius: 0; border: none; height: 100dvh; width: 100vw; } }
+  </style>
+</head>
+<body>
+  <main class="viewport-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span>{{ feed_title | default("ReelWall") }} · {{ user }}</span>
+        {% if is_explorer_feed %}
+        <a href="/explore" style="color:var(--accent); font-size:0.8rem; text-decoration:none;">Back to Explore</a>
+        {% elif is_bookmarks_feed %}
+        <a href="/bookmarks" style="color:var(--accent); font-size:0.8rem; text-decoration:none;">Back to Grid</a>
+        {% endif %}
+      </div>
+    </header>
+
+    <div class="feed" id="feed" data-page="0" tabindex="-1">
+      {% if items %}
+        <div id="feed-items">{{ items | safe }}</div>
+      {% else %}
+        <div class="feed-empty"><div>No media found.</div></div>
+      {% endif %}
+    </div>
+    <nav class="bottom-nav">
+      <a href="/feed" class="{% if active_tab == 'feed' %}active{% endif %}"><span class="icon">🏠</span><span>Home</span></a>
+      <a href="/explore" class="{% if active_tab == 'explore' %}active{% endif %}"><span class="icon">🧭</span><span>Explore</span></a>
+      <a href="/bookmarks" class="{% if active_tab == 'bookmarks' %}active{% endif %}"><span class="icon">🔖</span><span>Saved</span></a>
+      <a href="/settings" class="{% if active_tab == 'settings' %}active{% endif %}"><span class="icon">⚙️</span><span>Settings</span></a>
+      <a href="/logout"><span class="icon">👤</span><span>ME</span></a>
+    </nav>
+  </main>
+
+  <script>
+    const userBookmarks = new Set({{ bookmarked|tojson }});
+    let mediaObserver = null;
+    let soundOn = localStorage.getItem('soundOn') === 'true';
+
+    const setSoundState = (enabled) => {
+      soundOn = enabled; localStorage.setItem('soundOn', enabled);
+      const activeCard = document.querySelector('.video-card[aria-current="true"]');
+      const activeVideo = activeCard ? activeCard.querySelector('video.reel-media') : null;
+      document.querySelectorAll('video.reel-media').forEach(video => { video.muted = !enabled || (activeVideo && video !== activeVideo); });
+      document.querySelectorAll('.audio-toggle').forEach(button => { button.textContent = enabled ? '🔊' : '🔇'; });
+      if (activeVideo && enabled) activeVideo.play().catch(() => {});
+    };
+
+    const recordView = (mediaId) => { fetch('/api/view/' + encodeURIComponent(mediaId), { method: 'POST' }); };
+
+    const initializeCards = () => {
+      if (mediaObserver) mediaObserver.disconnect();
+      mediaObserver = new IntersectionObserver((entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        const topMedia = visible.length ? visible[0].target : null;
+        
+        entries.forEach((entry) => {
+          const targetMedia = entry.target; 
+          const card = targetMedia.closest('.video-card');
+          const mediaId = card.getAttribute('id').replace('media-', '');
+          const isVideo = targetMedia.tagName === 'VIDEO';
+
+          if (topMedia && targetMedia === topMedia && entry.intersectionRatio > 0.5) {
+            if (card.getAttribute('aria-current') !== 'true') {
+              document.querySelectorAll('.video-card[aria-current="true"]').forEach((item) => item.removeAttribute('aria-current'));
+              card.setAttribute('aria-current', 'true');
+              if(isVideo) targetMedia.currentTime = 0; 
+              recordView(mediaId);
+            }
+            if (isVideo) {
+              targetMedia.muted = !soundOn;
+              let playPromise = targetMedia.play();
+              if (playPromise !== undefined) playPromise.catch(() => { 
+                if (soundOn) { 
+                  targetMedia.muted = true; 
+                  targetMedia.play().catch(()=>{}); 
+                  setSoundState(false); 
+                } 
+              });
+            }
+          } else { 
+            if (isVideo) {
+              targetMedia.pause(); 
+              targetMedia.muted = true; 
+            }
+          }
+        });
+      }, { threshold: [0.2, 0.5, 0.8] });
+
+      document.querySelectorAll('.reel-media').forEach((targetMedia) => { 
+        if (targetMedia.tagName === 'VIDEO') targetMedia.muted = !soundOn; 
+        mediaObserver.observe(targetMedia); 
+      });
+      setSoundState(soundOn);
+    };
+
+    const toggleSound = () => setSoundState(!soundOn);
+    
+    const updateBookmarkButton = (button, mediaId) => {
+      const active = userBookmarks.has(mediaId);
+      button.classList.toggle('bookmarked', active);
+      button.textContent = active ? '★' : '☆';
+    };
+
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('.audio-toggle')) { toggleSound(); event.preventDefault(); return; }
+      const bookmarkButton = event.target.closest('.bookmark');
+      if (bookmarkButton) {
+        const mediaId = bookmarkButton.dataset.mediaId;
+        if (!mediaId) return;
+        if (userBookmarks.has(mediaId)) userBookmarks.delete(mediaId); else userBookmarks.add(mediaId);
+        updateBookmarkButton(bookmarkButton, mediaId); return;
+      }
+      if (event.target.closest('.player') && !event.target.closest('.dl-btn')) { toggleSound(); return; }
+    });
+
+    if (window.htmx) document.body.addEventListener('htmx:afterSettle', () => { initializeCards(); });
+    initializeCards();
+  </script>
+</body>
+</html>

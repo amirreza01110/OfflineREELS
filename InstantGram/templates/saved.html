@@ -1,0 +1,52 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Saved Media</title>
+  <style>
+    :root { --text: #f8fafc; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; height: 100dvh; font-family: "Trebuchet MS", sans-serif; background: linear-gradient(140deg, #020617 0%, #0f172a 35%, #111827 100%); color: var(--text); }
+    body { display: grid; place-items: center; place-content: center; }
+    .viewport-shell { width: min(100vw, calc(100dvh * 9 / 16)); height: min(100dvh, calc(100vw * 16 / 9)); margin: 0 auto; border-radius: 20px; overflow: hidden; border: 1px solid rgba(148, 163, 184, .25); background: rgba(15, 23, 42, .8); display: flex; flex-direction: column; }
+    .topbar { padding: .75rem 1rem; background: linear-gradient(to bottom, rgba(2,6,23,.95), rgba(2,6,23,.65)); border-bottom: 1px solid rgba(148,163,184,.2); }
+    .brand { font-size: 1.05rem; font-weight: 700; }
+    .explore-content { flex: 1; overflow-y: auto; background: #000; }
+    .explore-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
+    .explore-item { aspect-ratio: 1 / 1; background: #222; display: block; position: relative; text-decoration: none; }
+    .explore-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .bottom-nav { height: calc(56px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid rgba(148, 163, 184, .25); display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(2, 6, 23, .9); }
+    .bottom-nav a { display: grid; place-items: center; text-decoration: none; color: #94a3b8; font-size: .72rem; gap: .12rem; padding: .25rem 0; }
+    .bottom-nav a.active { color: #67e8f9; }
+    .empty-state { padding: 2rem; text-align: center; color: #94a3b8; }
+    @media (max-width: 640px) { .viewport-shell { border-radius: 0; border: none; height: 100dvh; width: 100vw; } }
+  </style>
+</head>
+<body>
+  <main class="viewport-shell">
+    <header class="topbar"><div class="brand">Saved Collection</div></header>
+    <div class="explore-content">
+      {% if items %}
+      <div class="explore-grid">
+        {% for media in items %}
+        <a href="{{ url_for('bookmarks_feed', media_id=media.id) }}" class="explore-item">
+          <img src="{{ url_for('get_thumbnail', media_id=media.id, v=media.version) }}" loading="lazy" alt="Thumbnail">
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">No saved items found.</div>
+      {% endif %}
+    </div>
+    <nav class="bottom-nav">
+      <a href="/feed"><span class="icon">🏠</span><span>Home</span></a>
+      <a href="/explore"><span class="icon">🧭</span><span>Explore</span></a>
+      <a href="/bookmarks" class="active"><span class="icon">🔖</span><span>Saved</span></a>
+      <a href="/settings"><span class="icon">⚙️</span><span>Settings</span></a>
+      <a href="/logout"><span class="icon">👤</span><span>ME</span></a>
+    </nav>
+  </main>
+</body>
+</html>

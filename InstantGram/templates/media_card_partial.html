@@ -1,0 +1,34 @@
+
+<div class="video-card" id="media-{{ media.id }}">
+  <div class="player">
+    {% if media.is_video %}
+    <video class="reel-media reel-video" preload="none" playsinline muted loop webkit-playsinline>
+      <source src="{{ url_for('stream_media', media_id=media.id, v=media.version) }}" type="video/mp4">
+    </video>
+    <button class="audio-toggle" type="button">🔇</button>
+    {% else %}
+    <img class="reel-media reel-image" src="{{ url_for('stream_media', media_id=media.id, v=media.version) }}" loading="lazy" alt="Image Post">
+    {% endif %}
+    
+    <button class="bookmark{% if media.id in bookmarked %} bookmarked{% endif %}" hx-post="{{ url_for('bookmark', media_id=media.id) }}" hx-swap="none" data-media-id="{{ media.id }}">{% if media.id in bookmarked %}★{% else %}☆{% endif %}</button>
+    
+    {% if show_download %}
+    <a href="{{ url_for('stream_media', media_id=media.id, v=media.version) }}" download class="dl-btn" title="Download Media">⬇</a>
+    {% endif %}
+
+    <div class="side-metrics">
+        {% if media.likes is not none %}
+        <div class="metric"><span class="icon">❤️</span><span class="text">{{ media.likes | short_num }}</span></div>
+        {% endif %}
+        {% if media.comments is not none %}
+        <div class="metric"><span class="icon">💬</span><span class="text">{{ media.comments | short_num }}</span></div>
+        {% endif %}
+    </div>
+
+    <div class="overlay">
+      <h2>{{ media.title }}</h2>
+      <div class="meta">{{ media.description }}</div>
+      <div class="meta">By {{ media.author }} • {{ media.timestamp }}</div>
+    </div>
+  </div>
+</div>
