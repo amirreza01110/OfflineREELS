@@ -442,18 +442,21 @@ def get_thumbnail(media_id):
         
     return thumbnail_placeholder()
 
-stop_event = threading.Event()
 
 def download_handler():
-    while not stop_event.is_set():
+    Need_thumb = False 
+    while True:
         if not os.path.exists(MEDIA_DIR / "Downloaded"):
           os.mkdir(MEDIA_DIR / "Downloaded")
           
         files = os.listdir(MEDIA_DIR / "Downloaded")
-        if files:
+
+        if len(files) != 0:
+            
             for file in files:
+                print(file)
                 if not file.endswith("mp4"):
-                    break
+                    continue
                 try:
                     now = datetime.now()
                     formatted = now.strftime("%m_%d_%Y")
@@ -463,15 +466,16 @@ def download_handler():
                         BASE_DIR / f"media/Downloaded/{file}",
                         BASE_DIR / f"media/{formatted}/{file}",
                     )
+                    Need_thumb = True
                 except Exception as e:
                     print("exception:", e)
-                stop_event.wait(1)   # interruptible sleep
-                startup_generate_thumbnails()
-              
+
+                
+        elif Need_thumb:
+            startup_generate_thumbnails()
+            Need_thumb =False
         else:
-            stop_event.wait(30)      # interruptible sleep
-        
-    print("Download handler terminated!")
+            time.sleep(30)
 
 downloadh = threading.Thread(target=download_handler, daemon = True)
 downloadh.start()
