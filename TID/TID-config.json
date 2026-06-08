@@ -1,5 +1,6 @@
 {
     "api_id" : "your-telegram-api-hash",
     "api_hash": "replace-with-your-telegram-api-hash",
-    "download_directory":"path/to/your/Insta-post-files-directory"
+    "download_directory":"path/to/your/Insta-post-files-directory",
+    "INSTA_TARGETS" : ["@instasavegrambot","@VoiceShazamBot","@SaveBroBot","@instagramersbot"]
 }

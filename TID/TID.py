@@ -75,7 +75,7 @@ REPLY_TIMEOUT = 40
 INSTA_DIR = Path(cfg.get("download_directory", ""))
 
 
-INSTA_TARGETS = ["@instasavegrambot","@VoiceShazamBot"]
+INSTA_TARGETS = cfg.get("INSTA_TARGETS",["@VoiceShazamBot"])
 
 app = Client("Instant", api_id=API_ID, api_hash=API_HASH, proxy=PROXY, workers=8)
 

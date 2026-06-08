@@ -18,7 +18,7 @@ print(Fore.RED)
 print("This code will Generate a file called Instant.session")
 print("Make sure you have set the api_id and api_hash in the TID/TID-config.json")
 print("Make sure  to set  the download_directory  var in the TID/TID-config.json \nto where your browser saves downloade file")
-
+print("Important: When using TID, MAKE SURE ALL THE TELEGRAM BOTS ARE READY \n(some of the bots need you to join a channel or start another bot!)")
 
 try:
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
