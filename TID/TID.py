@@ -4,7 +4,7 @@ import re
 import sys
 import time
 from pathlib import Path
-import os 
+import os
 
 
 from pyrogram import Client, filters
@@ -27,7 +27,7 @@ except json.JSONDecodeError as exc:
     print(f"❌ config.json is invalid JSON: {exc}")
     sys.exit(1)
 
-API_ID   = cfg.get("api_id", 0)
+API_ID = cfg.get("api_id", 0)
 API_HASH = cfg.get("api_hash", "")
 
 if not API_ID or not API_HASH or API_ID == 12345678:
@@ -69,13 +69,15 @@ PROXY = _detect_proxy()
 # Constants
 # ─────────────────────────────────────────────────────────────
 
-DOWNLOAD_DIR  = BASE_DIR/"../InstantGram/media/Downloaded"
-BAR_LEN       = 16
-REPLY_TIMEOUT = 40                    
-INSTA_DIR     = Path(cfg.get("download_directory", ""))      
-INSTA_TARGET  = "@instasavegrambot"        
+DOWNLOAD_DIR = BASE_DIR / "../InstantGram/media/Downloaded"
+BAR_LEN = 16
+REPLY_TIMEOUT = 40
+INSTA_DIR = Path(cfg.get("download_directory", ""))
 
-app = Client("Instant", api_id=API_ID, api_hash=API_HASH, proxy=PROXY, workers=8) # Added workers to increase download speed
+
+INSTA_TARGETS = ["@instasavegrambot","@VoiceShazamBot"]
+
+app = Client("Instant", api_id=API_ID, api_hash=API_HASH, proxy=PROXY, workers=8)
 
 # chat_id -> asyncio.Future awaiting that chat's next reply
 _pending = {}
@@ -102,44 +104,81 @@ def media_of(message):
     return None, None
 
 
-class Progress:
-    """Throttled progress bar. Edits a TG message, or prints to the console
-    when console=True (no message to edit)."""
+class ConsoleProgressManager:
+    """Render concurrent download progress in a fixed target order."""
 
-    def __init__(self, client, chat_id, msg_id, label, fname, console=False):
-        self.c       = client
-        self.cid     = chat_id
-        self.mid     = msg_id
-        self.label   = label
-        self.fname   = fname[:50]
-        self.console = console
-        self._last   = 0.0
+    def __init__(self, targets):
+        self.targets = list(targets)
+        self.lines = {target: "" for target in self.targets}
+        self.printed_lines = 0
+        self.lock = asyncio.Lock()
 
-    async def __call__(self, cur: int, total: int):
-        print(f"[CB] {cur}/{total}", flush=True)
-        now = time.time()
-        gap = 0.5 if self.console else 2
-        # always let the final 100% frame through
-        if total and cur < total and now - self._last < gap:
-            return
-        self._last = now
+    def _label(self, target):
+        idx = self.targets.index(target) + 1
+        return f"[{idx}] {target}"
 
+    async def reset(self, active_targets):
+        async with self.lock:
+            self.lines = {
+                target: f"{self._label(target):<26} waiting"
+                for target in active_targets
+            }
+            await self._render_locked(active_targets)
+
+    async def set_status(self, active_targets, target, status):
+        async with self.lock:
+            self.lines[target] = f"{self._label(target):<26} {status}"
+            await self._render_locked(active_targets)
+
+    async def update_progress(self, active_targets, target, fname, cur, total):
         pct = (cur / total * 100) if total else 0.0
         bar = make_bar(pct)
+        mb = cur / 1_048_576
+        tot_mb = total / 1_048_576 if total else 0.0
+        short_name = fname[:32]
 
-        if self.console:
-            mb     = cur / 1_048_576
-            tot_mb = total / 1_048_576 if total else 0.0
-            print(f"\r  {bar} {pct:5.1f}%  {mb:6.2f}/{tot_mb:6.2f} MB  "
-                  f"{self.fname}", end="", flush=True)
-            if total and cur >= total:
-                print()        # newline once finished
+        async with self.lock:
+            self.lines[target] = (
+                f"{self._label(target):<26} {bar} {pct:5.1f}%  "
+                f"{mb:6.2f}/{tot_mb:6.2f} MB  {short_name}"
+            )
+            await self._render_locked(active_targets)
+
+    async def _render_locked(self, active_targets):
+        if self.printed_lines:
+            sys.stdout.write(f"\x1b[{self.printed_lines}F")
+
+        for target in active_targets:
+            sys.stdout.write("\x1b[2K")
+            sys.stdout.write(self.lines.get(target, f"{self._label(target):<26} waiting"))
+            sys.stdout.write("\n")
+
+        sys.stdout.flush()
+        self.printed_lines = len(active_targets)
+
+    async def finish_batch(self):
+        async with self.lock:
+            self.printed_lines = 0
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+
+
+class Progress:
+    """Throttled console progress callback bound to one bot slot."""
+
+    def __init__(self, manager, active_targets, target, fname):
+        self.manager = manager
+        self.active_targets = active_targets
+        self.target = target
+        self.fname = fname
+        self._last = 0.0
+
+    async def __call__(self, cur: int, total: int):
+        now = time.time()
+        if total and cur < total and now - self._last < 0.5:
             return
-        text = f"{self.label}\n{bar} {pct:5.1f}%\n📁 {self.fname}"
-        try:
-            await self.c.edit_message_text(self.cid, self.mid, text)
-        except (FloodWait, MessageNotModified, MessageIdInvalid):
-            pass
+        self._last = now
+        await self.manager.update_progress(self.active_targets, self.target, self.fname, cur, total)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -153,32 +192,34 @@ async def reply_watcher(client: Client, message):
     if fut and not fut.done():
         fut.set_result(message)
 
+
 # ─────────────────────────────────────────────────────────────
 # Batch worker (scans INSTA_DIR for "Insta-post" files)
 # ─────────────────────────────────────────────────────────────
-async def grab_to_disk(client: Client, target: str, line: str):
-    """Send one line to the bot and download the media it replies with."""
-    print(f"\n🔗 Link: {line}")
+async def grab_to_disk(client: Client, target: str, line: str, manager: ConsoleProgressManager, active_targets):
+    """Send one line to one bot and download the media it replies with."""
+    sent_msg = None
+    reply = None
 
     try:
         peer = await client.get_chat(target)
         peer_id = peer.id
     except Exception as exc:
-        print(f"❌ Couldn't resolve {target}: {exc}")
+        await manager.set_status(active_targets, target, f"resolve failed: {exc}")
         return
+
     if peer_id in _pending:
-        print("⚠️ Already waiting on a reply from that chat.")
+        await manager.set_status(active_targets, target, "already waiting on this bot")
         return
 
-    loop = asyncio.get_event_loop()
-    fut  = loop.create_future()
-    _pending[peer_id] = fut          # arm BEFORE sending
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+    _pending[peer_id] = fut
 
-    reply = None
     try:
-        # Capture the sent message object so we can delete it later
+        await manager.set_status(active_targets, target, f"sending {line[:40]}")
         sent_msg = await client.send_message(peer_id, line)
-        print(f"📤 Sent. Waiting up to {REPLY_TIMEOUT}s for a reply…")
+        await manager.set_status(active_targets, target, "waiting for media reply")
 
         deadline = time.time() + REPLY_TIMEOUT
         while time.time() < deadline:
@@ -193,14 +234,14 @@ async def grab_to_disk(client: Client, target: str, line: str):
                 reply = got
                 break
 
-            print(f"    ↪ interim reply: {got.text or '(no text)'}")
             fut = loop.create_future()
             _pending[peer_id] = fut
+
     finally:
         _pending.pop(peer_id, None)
 
     if reply is None:
-        print("⌛ No media reply received in time.")
+        await manager.set_status(active_targets, target, "timeout: no media reply")
         return
 
     media, kind = media_of(reply)
@@ -211,20 +252,30 @@ async def grab_to_disk(client: Client, target: str, line: str):
 
     DOWNLOAD_DIR.mkdir(exist_ok=True)
     dest = DOWNLOAD_DIR / fname
-    print(f"🐱 Found a {kind}. Downloading…")
 
-    prog = Progress(client, 0, None, "", fname, console=True)
+    prog = Progress(manager, active_targets, target, fname)
+
     try:
         saved = await client.download_media(reply, file_name=str(dest), progress=prog.__call__)
-        
-        # Clean up the bot chat by deleting your request and its video response
-        await client.delete_messages(peer_id, [sent_msg.id, reply.id])
+
+        if sent_msg is not None:
+            await client.delete_messages(peer_id, [sent_msg.id, reply.id])
+
     except Exception as exc:
-        print(f"❌ Download failed: {exc}")
+        await manager.set_status(active_targets, target, f"download failed: {exc}")
         return
-    
+
     size = Path(saved).stat().st_size if saved else 0
-    print(f"✅ Saved → {saved}  ({size/1_048_576:.2f} MB)")
+    await manager.set_status(
+        active_targets,
+        target,
+        f"done: {Path(saved).name} ({size / 1_048_576:.2f} MB)"
+    )
+
+
+def chunked(items, size):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
 
 
 async def download_worker(client: Client):
@@ -232,18 +283,32 @@ async def download_worker(client: Client):
         print(f"❌ Folder not found: {INSTA_DIR}")
         return
 
+    if not INSTA_TARGETS:
+        print("❌ INSTA_TARGETS is empty.")
+        return
+
+    manager = ConsoleProgressManager(INSTA_TARGETS)
+
     for file in INSTA_DIR.iterdir():
         if not file.is_file() or "Insta-post" not in file.name:
             continue
+
         print(f"\n📄 Reading {file.name}")
+
         with open(file, "r", encoding="utf-8") as f:
-            for raw in f:
-                link = raw.strip()
-                if not link:
-                    continue
-                await grab_to_disk(client, INSTA_TARGET, link)
-        
-        # Removed text file safely after closing the reader handle
+            links = [raw.strip() for raw in f if raw.strip()]
+
+        for batch in chunked(links, len(INSTA_TARGETS)):
+            active_targets = INSTA_TARGETS[:len(batch)]
+            await manager.reset(active_targets)
+
+            tasks = [
+                grab_to_disk(client, target, link, manager, active_targets)
+                for target, link in zip(active_targets, batch)
+            ]
+            await asyncio.gather(*tasks)
+            await manager.finish_batch()
+
         try:
             os.remove(file)
             print(f"🗑️ Removed source file: {file.name}")
@@ -273,7 +338,6 @@ async def main():
                 await download_worker(app)
                 print("✅ All links in the *-Insta-post.txt files were downloaded — sleeping 5s\n")
                 await asyncio.sleep(5)
-
             except Exception as e:
                 print(f"exception caught {e}")
     except (KeyboardInterrupt, SystemExit):
@@ -283,7 +347,4 @@ async def main():
 
 
 def init():
-    
-        app.run(main())
-    
-# init()
+    app.run(main())

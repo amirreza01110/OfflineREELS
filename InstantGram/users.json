@@ -2,7 +2,7 @@
   "users": [
     {
       "username": "admin",
-      "password": "change-this-password"
+      "password": "password"
     }
   ]
 }
