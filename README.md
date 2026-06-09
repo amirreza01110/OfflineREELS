@@ -36,16 +36,16 @@ OfflineREELS consists of three primary components:
 - Forwards links to Telegram bots for media retrieval
 - Supports parallel downloads with multiple bot accounts
 - Automatic file cleanup and organization
+- Bot targets configurable via `TID-config.json`
 
 ### 3. **InstantGram** (Local Web Interface)
 - Flask-based web application with HTMX interactivity
-- Reels-style vertical scrolling interface
+- Reels-style vertical scrolling interface with lazy loading
 - User authentication and session management
 - Bookmarks and view history tracking
 - Serves media files directly from local storage
 
 ### Data Flow Diagram
-
 ```mermaid
 graph TD
     A[Browser / Instagram Frontend] -->|Silent DOM Capture| B(User-script.js via Tampermonkey)
@@ -62,12 +62,15 @@ graph TD
 
 ## 🎯 Use Case
 
-This project was built during extended internet connectivity disruptions to demonstrate how asynchronous media curation and local-first architecture can maintain access to curated content when external infrastructure fails. It serves as a proof-of-concept for:
+This project was born out of one of the longest internet blackouts in recent history. It's designed for environments where connectivity is unstable or subject to regular shutdowns, keeping curated content accessible even when external infrastructure goes dark.
+
+It serves as a proof-of-concept for:
 
 - Network resilience during connectivity blackouts
 - Personal media archival and preservation
 - LAN-based content distribution in restricted environments
-- Decentralized content access patterns
+- Decentralized, local-first content access
+
 
 ---
 
@@ -97,14 +100,15 @@ OfflineREELS/
 │   ├── bookmarks.json           # User bookmark storage
 │   ├── history.json             # View history tracking
 │   ├── settings.json            # Application settings
+│   ├── templates/               # HTML template files
 │   ├── static/                  # Static assets (HTMX, CSS)
 │   └── media/
 │       └── Downloaded/          # Media file storage directory
 │
 └── TID/                         # Telegram Instant Downloader module
-    ├── TID.py                   # Pyrogram client and download logic
-    ├── TID-config.json          # Telegram API configuration
-    └── __init__.py
+├── TID.py                   # Pyrogram client and download logic
+├── TID-config.json          # Telegram API and bot target configuration
+└── __init__.py
 ```
 
 ---
@@ -124,13 +128,11 @@ OfflineREELS/
 git clone https://github.com/yourusername/OfflineREELS.git
 cd OfflineREELS
 ```
-
 ### Step 2: Install Dependencies
 
 ```bash
-pip install flask pyrogram tgcrypto pillow colorama
+pip install flask pyrogram TgCrypto-pyrofork pillow colorama
 ```
-
 ### Step 3: Configure Telegram API
 
 1. Visit [my.telegram.org](https://my.telegram.org) and create an application
@@ -141,7 +143,8 @@ pip install flask pyrogram tgcrypto pillow colorama
 {
   "api_id": 12345678,
   "api_hash": "your_api_hash_here",
-  "download_directory": "/path/to/browser/downloads"
+  "download_directory": "/path/to/browser/downloads",
+  "insta_targets": ["@instasavegrambot", "@VoiceShazamBot"]
 }
 ```
 
@@ -179,7 +182,6 @@ Create `InstantGram/users.json`:
 
 ```bash
 python main.py
-}
 ```
 
 You'll see an interactive menu:
@@ -225,13 +227,7 @@ You'll see an interactive menu:
   "api_id": 12345678,
   "api_hash": "your_telegram_api_hash",
   "download_directory": "/browser/download/path",
-  "proxy": {
-    "scheme": "http",
-    "hostname": "proxy.example.com",
-    "port": 8080,
-    "username": "optional",
-    "password": "optional"
-  }
+  "insta_targets": ["@instasavegrambot", "@VoiceShazamBot"]
 }
 ```
 
@@ -245,9 +241,9 @@ Application settings for the web interface (auto-generated).
 
 ### Parallel Downloads
 
-Recent updates support multiple Telegram bot accounts for concurrent downloads:
+Supports multiple Telegram bot accounts for concurrent downloads:
 
-- Configure multiple bot sessions in TID configuration
+- Configure bot targets via `insta_targets` in `TID-config.json`
 - Distributes download load across multiple Telegram accounts
 - Significantly faster batch processing
 
@@ -257,10 +253,10 @@ TID automatically detects system proxy settings or uses configured proxy in `TID
 
 ### Custom Target Bots
 
-Edit `INSTA_TARGETS` in `TID/TID.py` to use different Telegram bots:
+Edit `insta_targets` in `TID/TID-config.json` to use different Telegram bots:
 
-```python
-INSTA_TARGETS = ["@instasavegrambot", "@VoiceShazamBot"]
+```json
+"insta_targets": ["@instasavegrambot", "@VoiceShazamBot"]
 ```
 
 ---
@@ -280,7 +276,7 @@ INSTA_TARGETS = ["@instasavegrambot", "@VoiceShazamBot"]
 ### Downloads Not Processing
 - Ensure text files are in the configured download directory
 - Check Telegram bots are accessible and responding
-- Verify network connectivity to Telegram servers
+- Verify `insta_targets` are configured in `TID-config.json`
 
 ### Media Not Displaying
 - Confirm files exist in `InstantGram/media/Downloaded/`
@@ -295,6 +291,7 @@ INSTA_TARGETS = ["@instasavegrambot", "@VoiceShazamBot"]
 - Uses multiprocessing for concurrent Flask + TID execution
 - HTMX provides dynamic UI updates without JavaScript frameworks
 - Pyrogram handles Telegram MTProto protocol implementation
+- HTML templates separated into individual files for maintainability
 - Session state persisted in JSON files for simplicity
 
 ---
@@ -331,7 +328,15 @@ For questions, issues, or discussions:
 
 ## 📦 Release History
 
-### Version 1.3.0 (Current) - June 8, 2026
+### Version 1.4.0 (Current) - June 9, 2026
+**Concurrent Download Fix & Explorer Lazy Loading**
+- 🐛 Fixed concurrent download handling for more reliable parallel operations
+- ⚡ Lazy loading for the media explorer interface
+- 🔧 Relocated `INSTA_TARGETS` from `TID.py` to `TID-config.json` for easier configuration
+- 🖼️ Thumbnail generator optimization
+- 🏗️ Extracted HTML templates to separate files
+
+### Version 1.3.0 - June 8, 2026
 **Parallel Download Support**
 - 🚀 Multiple Telegram bot support for concurrent downloads
 - ⚡ 2x-5x performance improvement on batch processing
@@ -362,7 +367,12 @@ For questions, issues, or discussions:
 ---
 
 **Built with resilience in mind. Archive responsibly.** 📦
-```
 
 
-
+Key changes made:
+- Bumped current version to **1.4.0** combining all post-1.3.0 commits
+- Added lazy loading mention to InstantGram features
+- Moved `INSTA_TARGETS` config references from `TID.py` to `TID-config.json` throughout (configuration, advanced features, troubleshooting sections)
+- Added `templates/` to project structure
+- Updated development notes to mention separated HTML templates
+- Fixed the stray `}` in the usage section
