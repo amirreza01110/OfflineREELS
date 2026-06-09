@@ -77,10 +77,11 @@ INSTA_DIR = Path(cfg.get("download_directory", ""))
 
 INSTA_TARGETS = cfg.get("INSTA_TARGETS",["@VoiceShazamBot"])
 
-app = Client("Instant", api_id=API_ID, api_hash=API_HASH, proxy=PROXY, workers=8)
+app = Client("Instant", api_id=API_ID, api_hash=API_HASH, proxy=PROXY, workers=40,max_concurrent_transmissions=len(INSTA_TARGETS)*2)
 
-# chat_id -> asyncio.Future awaiting that chat's next reply
+
 _pending = {}
+_download_sem = asyncio.Semaphore(len(INSTA_TARGETS))
 
 # ─────────────────────────────────────────────────────────────
 # Helpers
@@ -184,20 +185,19 @@ class Progress:
 # ─────────────────────────────────────────────────────────────
 # Handlers
 # ─────────────────────────────────────────────────────────────
-
 @app.on_message(filters.incoming, group=1)
 async def reply_watcher(client: Client, message):
-    """Resolve a pending future when the awaited chat replies."""
-    fut = _pending.get(message.chat.id)
-    if fut and not fut.done():
-        fut.set_result(message)
+    q = _pending.get(message.chat.id)
+
+
+    if q is not None:
+        await q.put(message)
 
 
 # ─────────────────────────────────────────────────────────────
 # Batch worker (scans INSTA_DIR for "Insta-post" files)
 # ─────────────────────────────────────────────────────────────
 async def grab_to_disk(client: Client, target: str, line: str, manager: ConsoleProgressManager, active_targets):
-    """Send one line to one bot and download the media it replies with."""
     sent_msg = None
     reply = None
 
@@ -212,9 +212,8 @@ async def grab_to_disk(client: Client, target: str, line: str, manager: ConsoleP
         await manager.set_status(active_targets, target, "already waiting on this bot")
         return
 
-    loop = asyncio.get_running_loop()
-    fut = loop.create_future()
-    _pending[peer_id] = fut
+    q = asyncio.Queue()
+    _pending[peer_id] = q
 
     try:
         await manager.set_status(active_targets, target, f"sending {line[:40]}")
@@ -222,20 +221,26 @@ async def grab_to_disk(client: Client, target: str, line: str, manager: ConsoleP
         await manager.set_status(active_targets, target, "waiting for media reply")
 
         deadline = time.time() + REPLY_TIMEOUT
+
         while time.time() < deadline:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+
             try:
-                remaining = max(1, deadline - time.time())
-                got = await asyncio.wait_for(fut, timeout=remaining)
+                got = await asyncio.wait_for(q.get(), timeout=remaining)
+
             except asyncio.TimeoutError:
                 break
+
+            # Ignore messages older than our request
+            if sent_msg and got.date < sent_msg.date:
+                continue
 
             media, kind = media_of(got)
             if media:
                 reply = got
                 break
-
-            fut = loop.create_future()
-            _pending[peer_id] = fut
 
     finally:
         _pending.pop(peer_id, None)
@@ -250,13 +255,20 @@ async def grab_to_disk(client: Client, target: str, line: str, manager: ConsoleP
         ext = "mp4" if kind in ("video", "animation", "video_note") else "bin"
         fname = f"{kind}_{int(time.time())}.{ext}"
 
-    DOWNLOAD_DIR.mkdir(exist_ok=True)
-    dest = DOWNLOAD_DIR / fname
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    dest = DOWNLOAD_DIR / line.split("/")[4]
 
     prog = Progress(manager, active_targets, target, fname)
 
     try:
-        saved = await client.download_media(reply, file_name=str(dest), progress=prog.__call__)
+
+        await manager.set_status(active_targets, target, f"media received, starting download")
+        async with _download_sem:
+            saved = await client.download_media(
+                reply,
+                file_name=str(dest) + ".mp4",
+                progress=prog.__call__
+            )
 
         if sent_msg is not None:
             await client.delete_messages(peer_id, [sent_msg.id, reply.id])
@@ -271,6 +283,7 @@ async def grab_to_disk(client: Client, target: str, line: str, manager: ConsoleP
         target,
         f"done: {Path(saved).name} ({size / 1_048_576:.2f} MB)"
     )
+
 
 
 def chunked(items, size):
