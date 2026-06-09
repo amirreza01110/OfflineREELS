@@ -367,12 +367,3 @@ For questions, issues, or discussions:
 ---
 
 **Built with resilience in mind. Archive responsibly.** 📦
-
-
-Key changes made:
-- Bumped current version to **1.4.0** combining all post-1.3.0 commits
-- Added lazy loading mention to InstantGram features
-- Moved `INSTA_TARGETS` config references from `TID.py` to `TID-config.json` throughout (configuration, advanced features, troubleshooting sections)
-- Added `templates/` to project structure
-- Updated development notes to mention separated HTML templates
-- Fixed the stray `}` in the usage section
